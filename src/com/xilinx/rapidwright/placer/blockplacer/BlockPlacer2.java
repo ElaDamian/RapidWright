@@ -101,6 +101,7 @@ public class BlockPlacer2 {
     // Update. Added variable to support partial .dcp
     public boolean save_partial_dcp = true;
 	
+    private static boolean vertical = true; 
 	/** 
 	 * Empty Constructor
 	 * 
@@ -607,6 +608,7 @@ public class BlockPlacer2 {
 		HashSet<Tile> usedTiles = new HashSet<Tile>();
         // Added variable for genreating partial dcp
         boolean save_and_exit = false;
+        int unplaced_ips = 0;
 		// Perform final placement of all hard macros
 		for(HardMacro hm : array){	
 			//System.out.println(moveCount.get(hm) + " " + hm.tileSize + " " + hm.getName());
@@ -619,19 +621,20 @@ public class BlockPlacer2 {
 					if(save_partial_dcp) {
                         save_and_exit = true;
                         System.out.println("ERROR: Placement failed for "+hm.getName());
-                        hm.unplace(); 
+                        hm.unplace();
+                        unplaced_ips++;
                     } else
                         MessageGenerator.briefErrorAndExit("ERROR: Placement failed, couldn't find valid site for " + hm.getName());	                   
 				}
 			}
 			else{
-				usedTiles.addAll(footPrint);
-				if(!hm.place(hm.getTempAnchorSite())){
-                    // Updated code. Goal: if placement fails, unplace that IP and generate .dcp in order to let vivado continue PAR
+				boolean placement_failed = Place_and_ShiftUp(usedTiles,(ModuleInst)hm,footPrint,hm.getTempAnchorSite() );
+				if(placement_failed) {
 					if(save_partial_dcp) {
                         save_and_exit = true;
                         System.out.println("ERROR: Placement failed for "+hm.getName());
                         hm.unplace(); 
+                        unplaced_ips++;
                     } else 
                         MessageGenerator.briefErrorAndExit("ERROR: Problem placing " + hm.getName() + " on site: " + hm.getTempAnchorSite());
 				}
@@ -647,7 +650,7 @@ public class BlockPlacer2 {
         if(save_and_exit) {
 			String placedDCPName = "partialy_placed.dcp";
 			design.writeCheckpoint(placedDCPName);
-			MessageGenerator.briefErrorAndExit("ERROR: Placement failed, couldn't find valid site for all the IPs. Partially placed .dcp saved for debug " );
+			MessageGenerator.briefErrorAndExit("ERROR: Placement failed, couldn't find valid site for all the IPs. Partially placed .dcp saved for debug. Number of failed IPs "+unplaced_ips );
 		}
                 
 		return design;
@@ -728,8 +731,11 @@ public class BlockPlacer2 {
 				
 				Site newAnchorSite = anchorSite.getCorrespondingSite(modInst.getModule().getAnchor().getSiteTypeEnum(), proposedAnchorTile);
 				if(tiles != null && modInst.place(newAnchorSite)){
-					usedTiles.addAll(tiles);
-					return true;
+					boolean fail = Place_and_ShiftUp(usedTiles,modInst,tiles,newAnchorSite);
+					if (fail)
+						tiles = null;
+					else 
+						return true;
 				}
 				else{
 					tiles = null;
@@ -757,7 +763,7 @@ public class BlockPlacer2 {
 			return false;
 		}
 		Site newAnchorSite = anchorSite.getCorrespondingSite(modInst.getModule().getAnchor().getSiteTypeEnum(), proposedAnchorTile);
-		if(modInst.place(newAnchorSite)){
+		if(!Place_and_ShiftUp(usedTiles,modInst,tiles,newAnchorSite)){
 			usedTiles.addAll(tiles);
 			return true;
 		}
@@ -1014,4 +1020,73 @@ public class BlockPlacer2 {
 		
 		System.out.println("System cost for file: " + fileName + " is " + currentSystemCost());
 	}
+	
+	
+	
+	
+		// Shift IP up after finding a valid placement
+		// If it contains BRAM, it must be shifted by 5 for zc7, if another device is used, please verify this value!
+		private boolean Place_and_ShiftUp (HashSet<Tile> add_usedTiles, ModuleInst modInst, HashSet<Tile> footPrint, Site tempAnchorSite ) {
+			// Try shifting up
+			boolean Placement_Valid = true;
+			boolean save_and_exit = false;
+			Site ShiftAnchor = tempAnchorSite;
+			int moved_up = 1;
+			int increment = 1;
+			
+			// If the Anchor is a BRAM, increment always with 2
+			if(modInst.getAnchor().getName().contains("RAM")) {
+				increment = 2;
+				moved_up = 2;
+			}
+			
+			if(!vertical) {
+				Placement_Valid = false;
+				if(!modInst.place(tempAnchorSite)){
+					System.out.println("ERROR: Problem placing even at the original site");
+					//MessageGenerator.briefErrorAndExit("ERROR: Placement failed, couldn't find valid site for " + hm.getName());
+					save_and_exit = true;
+				} else add_usedTiles.addAll(footPrint);
+			}
+			while (Placement_Valid) {
+				Site new_Anch = ShiftAnchor.getNeighborSite(0, moved_up);
+				HashSet<Tile> check_footPrint = new HashSet<Tile>();
+				if (new_Anch!=null) {
+					check_footPrint = isValidPlacement((ModuleInst)modInst, modInst.getModule().getAnchor().getSite(), new_Anch.getTile(), add_usedTiles);
+					if(check_footPrint == null)	{
+						if(moved_up==1) {
+							// Some have BRAMs and can only be moved by 5 clbs at a time. Try moving it by 1. If it doesn't work, maybe the pblock has BRAMS => update increment value to 5. 
+							// If the Anchor is BRAM, than set increment value to 5
+							moved_up = 5;
+							increment = 5;
+						} else {
+							// If this was not the first move, than the move is simply not possible. 
+							Placement_Valid = false;
+						}
+					} else {
+						// It worked! Let's try to go upper
+						moved_up+= increment;
+					}
+				} else {
+					Placement_Valid = false;
+				}
+				if(Placement_Valid == false) {
+					// Prepare return data
+					HashSet<Tile> last_valid_footPrint = new HashSet<Tile>();
+					last_valid_footPrint = isValidPlacement((ModuleInst)modInst, modInst.getModule().getAnchor().getSite(), ShiftAnchor.getNeighborSite(0, moved_up-increment).getTile(), add_usedTiles);							
+					if(!modInst.place(ShiftAnchor.getNeighborSite(0, moved_up-increment))){ // This should actually work, but for all cases...
+						if(!modInst.place(tempAnchorSite)){
+							System.out.println("ERROR: Problem placing even at the original site");
+							//MessageGenerator.briefErrorAndExit("ERROR: Placement failed, couldn't find valid site for " + hm.getName());
+							save_and_exit = true;
+						} else
+							add_usedTiles.addAll(footPrint);
+						//MessageGenerator.briefErrorAndExit("ERROR: Problem placing " + hm.getName() + " on site: " + ShiftAnchor.getNeighborSite(0, moved_up-1));
+					} else 
+						add_usedTiles.addAll(last_valid_footPrint);	
+				}
+			}
+			return save_and_exit;
+		}
+		
 }
