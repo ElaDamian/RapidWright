@@ -60,6 +60,12 @@ public class LocalJob extends Job {
 		setJobNumber(getProcessID());
 		return getJobNumber();
 	}
+	
+	@Override
+	public void SetLogName(String input) {
+		super.DEFAULT_SCRIPT_NAME = input;
+		super.DEFAULT_COMMAND_NAME = input.concat("_cmd");
+	}
 
 	/* (non-Javadoc)
 	 * @see com.xilinx.rapidwright.util.Job#isFinished()

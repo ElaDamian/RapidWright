@@ -56,8 +56,13 @@ import com.xilinx.rapidwright.device.TileTypeEnum;
 import com.xilinx.rapidwright.util.Utils;
 import com.xilinx.rapidwright.device.browser.PBlockGenEmitter;
 import com.xilinx.rapidwright.device.helper.TileColumnPattern;
+import com.xilinx.rapidwright.ipi.BlockCreator;
 import com.xilinx.rapidwright.util.FileTools;
+import com.xilinx.rapidwright.util.Job;
+import com.xilinx.rapidwright.util.LocalJob;
 import com.xilinx.rapidwright.util.MessageGenerator;
+
+import java.io.File;
 
 /**
  * Attempts to estimate a fitting pblock for a given design.
@@ -66,6 +71,7 @@ import com.xilinx.rapidwright.util.MessageGenerator;
  */
 public class PBlockGenerator {
 
+	public static int CARRY_PER_CLE = 1;
 	public static final int LUTS_PER_CLE = 8;
 	public static final int FF_PER_CLE = 16;
 	public static final float CLES_PER_BRAM = 5;
@@ -156,6 +162,9 @@ public class PBlockGenerator {
 				carryCount = Integer.parseInt(line.split("\\s+")[3]);
 			}
 		}
+		if (dev.getName().contains("xc7")) {
+			CARRY_PER_CLE = 2;
+		}
 		
 		if(debug){
 			System.out.println("Parsed report: " + reportFileName);
@@ -191,7 +200,7 @@ public class PBlockGenerator {
 					}
 					
 					double sliceUsage = Math.max(((double)lutCount)/LUTS_PER_CLE, ((double)ffCount)/FF_PER_CLE);
-					sliceUsage = Math.max(sliceUsage, ((double)carryCount));
+					sliceUsage = Math.max(sliceUsage, ((double)carryCount/CARRY_PER_CLE));
 					fractionalShapeArea += (carryCount > 0 || lutCount > 0 || ffCount > 0) ? sliceUsage : widthDim * heightDim;
 					
 					lutCount = 0;
@@ -800,8 +809,8 @@ public class PBlockGenerator {
 		if(regCount/FF_PER_CLE > lutCount/LUTS_PER_CLE){
 			slicesRequired = Math.round((((float)regCount / (float)FF_PER_CLE) * OVERHEAD_RATIO) + 0.5f);
 		}
-		if(carryCount > slicesRequired){
-			slicesRequired = (int)((float)carryCount*OVERHEAD_RATIO);
+		if(carryCount/CARRY_PER_CLE > slicesRequired){
+			slicesRequired = (int)((float)carryCount/CARRY_PER_CLE*OVERHEAD_RATIO);
 		}
 		int dspsRequired = dspCount;
 		if((dspsRequired & 0x1) == 0x1){
@@ -895,6 +904,7 @@ public class PBlockGenerator {
 			}
 		}
 		
+
 		// Fail safe in case we get too short, make sure shapes (carry chains,etc) can fit 
 		if(tallestShape > pblockCLEHeight){
 			pblockCLEHeight = tallestShape;
@@ -971,6 +981,8 @@ public class PBlockGenerator {
 				StringBuilder sb = new StringBuilder();
 				
 				// Create pblock for CLBs
+				// Store WritePBlocks to write them at the end of the loop, in case implementation is feasible
+				List<String> WritePBlocks = new ArrayList<String>();
 				if(numSLICEColumns > 0 || numSLICEMColumns > 0){
 					HashMap<Integer, Integer []> CLBPBlock = new HashMap<Integer, Integer []> ();
 					createAllPBlocks (CLBPBlock,patMap,p, numSLICEColumns, numSLICEMColumns,numBRAMColumns,numDSPColumns,numSLICERows);		// Re-generate pblock to write it in the file
@@ -982,10 +994,9 @@ public class PBlockGenerator {
 
 					sb.append("SLICE_X" + LeftX + "Y" + LowerY + ":SLICE_X" + RightX + "Y" + UpperY);
 					
-					// Write PBlock in Global PBlock file, so that the next IPs will try to use other columns if free
+					// Prepare data to be written in the Global PBlock file, so that the next IPs will try to use other columns if free
 					// Current solution works actually if only 1 pblock is used for the implementation of the IP. If more are used, this won't give an accurate value
 					// Also, current solution computes free resources only in case of CLB pblocks. The BRAMS and DRAMs columns are selected to match the most suitable clb pblock
-					List<String> WritePBlocks = new ArrayList<String>();
 					for (Integer i: CLBPBlock.keySet()) {
 						WritePBlocks.add("SLICE_X" + CLBPBlock.get(i)[0] + "Y" + CLBPBlock.get(i)[2] + ":SLICE_X" + CLBPBlock.get(i)[1] + "Y" + CLBPBlock.get(i)[3]);
 					} 
@@ -995,15 +1006,7 @@ public class PBlockGenerator {
 						IP_NR_INSTANCES = 1;
 					}
 					
-					try (FileWriter fw = new FileWriter(GLOBAL_PBLOCK, true); // append to file
-						    BufferedWriter bw = new BufferedWriter(fw);
-						    PrintWriter out = new PrintWriter(bw)) {
-							int nrInstances = (int) Math.ceil((double)IP_NR_INSTANCES / WritePBlocks.size()); // distribute instances over number of pblocks of this pattern
-							for(int stringNr = 0; stringNr<WritePBlocks.size();stringNr++)
-								out.println(WritePBlocks.get(stringNr)+" "+nrInstances);
-							} catch (IOException e) {
-								MessageGenerator.briefErrorAndExit("Problem appending all the pblocks to the " + GLOBAL_PBLOCK +" file");
-							}
+					
 				
 				}
 				if(numBRAMColumns > 0){
@@ -1035,9 +1038,39 @@ public class PBlockGenerator {
 							 ":DSP48E2_X" + (upperLeft.getInstanceX()+numDSPColumns-1) + "Y" + upperLeft.getInstanceY());
 					
 				}
-				pBlocks.add(sb.toString());
-				if(nrAddedPatterns == PBLOCK_COUNT) return pBlocks;
-				nrAddedPatterns++;
+				
+				String scriptName ="impl.tcl";
+				String optDcpFileName = reportFileName.split("_utilization")[0].concat("_opt.dcp");
+				Job j =  new LocalJob();
+				j.SetLogName("try_impl_pblock");
+				j.setRunDir(System.getProperty("user.dir"));
+				j.setCommand(FileTools.getVivadoPath() + " -mode batch -source " + scriptName);
+				PBlock testPBlock =  new PBlock(dev, sb.toString());
+				BlockCreator.createTclScript(scriptName, optDcpFileName, testPBlock, 1, null);
+				j.launchJob();
+				while(!j.isFinished());
+				// Write global file containing PBlocks if implementation finished succesfully
+				if(j.jobWasSuccessful()) {	
+					// 	Write done file to avoid implementation step during stitching 
+					BlockCreator.createDoneFile("./done.file.0", null); // null = no impl helper
+					try (FileWriter fw = new FileWriter(GLOBAL_PBLOCK, true); // append to file
+						    BufferedWriter bw = new BufferedWriter(fw);
+						    PrintWriter out = new PrintWriter(bw)) {
+							int nrInstances = (int) Math.ceil((double)IP_NR_INSTANCES / WritePBlocks.size()); // distribute instances over number of pblocks of this pattern
+							for(int stringNr = 0; stringNr<WritePBlocks.size();stringNr++)
+								out.println(WritePBlocks.get(stringNr)+" "+nrInstances);
+							} catch (IOException e) {
+								MessageGenerator.briefErrorAndExit("Problem appending all the pblocks to the " + GLOBAL_PBLOCK +" file");
+							}
+					pBlocks.add(sb.toString());
+					if(nrAddedPatterns == PBLOCK_COUNT) return pBlocks;
+					nrAddedPatterns++;
+				} else {
+					ArrayList<String> error = new ArrayList<String>(1);
+					error.add("Overhead");
+					return error;
+				}
+				
 			}
 		}
 		
@@ -1506,13 +1539,22 @@ public class PBlockGenerator {
 		}
 		HashSet<String> alreadySeen = new HashSet<String>();
 		int requested = pbGen.PBLOCK_COUNT;
-		for(String s : pbGen.generatePBlockFromReport(fileName, shapesReportFileName)){
-			if(alreadySeen.contains(s)) continue;
-			System.out.println(s);
-			alreadySeen.add(s);
-			requested--;
-			if(requested == 0) break;
+		boolean overheadFound = false;
+		while(!overheadFound) {
+			for(String s : pbGen.generatePBlockFromReport(fileName, shapesReportFileName)){
+				if(s.contains("Overhead")) {
+					overheadFound = false;
+					break;
+				}
+				overheadFound = true;	
+				if(alreadySeen.contains(s)) continue;
+				System.out.println(s);
+				alreadySeen.add(s);
+				requested--;
+				if(requested == 0) break;
+			}
+			pbGen.OVERHEAD_RATIO +=0.1;
 		}
-		
+		//System.out.println("# Overhead = "+(pbGen.OVERHEAD_RATIO-0.1));
 	}
 }

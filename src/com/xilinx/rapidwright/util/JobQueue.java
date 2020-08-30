@@ -113,7 +113,7 @@ public class JobQueue {
 			if(!curr){
 				if(failedCount == 0){
 					// Let's just print the first error output
-					String logFileName = j.getRunDir() + File.separator + Job.DEFAULT_COMMAND_LOG_FILE;
+					String logFileName = j.getRunDir() + File.separator + j.DEFAULT_COMMAND_LOG_FILE;
 					if(logFileName != null && new File(logFileName).exists()){
 						ArrayList<String> lines = FileTools.getLinesFromTextFile(logFileName);
 						System.err.println("***************************************************************************");
