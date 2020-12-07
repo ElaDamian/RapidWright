@@ -38,11 +38,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 public class JobQueue {
 
-	public static int MAX_LOCAL_CONCURRENT_JOBS = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
+	public static int MAX_LOCAL_CONCURRENT_JOBS =  Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
 	
 	public static int MAX_LSF_CONCURRENT_JOBS = 120;
 	
-	public static boolean USE_LSF_IF_AVAILABLE = true; 
+	public static boolean USE_LSF_IF_AVAILABLE = false; // Ela!
 	
 	private Queue<Job> waitingToRun;
 	
@@ -113,7 +113,7 @@ public class JobQueue {
 			if(!curr){
 				if(failedCount == 0){
 					// Let's just print the first error output
-					String logFileName = j.getRunDir() + File.separator + Job.DEFAULT_COMMAND_LOG_FILE;
+					String logFileName = j.getRunDir() + File.separator + j.DEFAULT_COMMAND_LOG_FILE;
 					if(logFileName != null && new File(logFileName).exists()){
 						ArrayList<String> lines = FileTools.getLinesFromTextFile(logFileName);
 						System.err.println("***************************************************************************");
@@ -197,6 +197,7 @@ public class JobQueue {
 				q.addJob(j);
 			}
 		}
+		System.out.println(" MAX_LOCAL_CONCURRENT_JOBS is: "+MAX_LOCAL_CONCURRENT_JOBS);
 		boolean success = q.runAllToCompletion(useLSF ? MAX_LSF_CONCURRENT_JOBS : MAX_LOCAL_CONCURRENT_JOBS);
 		if(success) System.out.println("Runs completed successfully");
 		else System.err.println("One or more runs failed");

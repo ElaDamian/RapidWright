@@ -42,18 +42,19 @@ public abstract class Job {
 	private String runDir;
 	
 	private long jobNumber;
-
-	public static final String DEFAULT_SCRIPT_NAME = "run";
 	
-	public static final String DEFAULT_COMMAND_NAME = "cmd";
+
+	public  final String DEFAULT_SCRIPT_NAME = "run";
+	
+	public  final String DEFAULT_COMMAND_NAME =  "cmd";
 	
 	public static final String DEFAULT_LOG_EXTENSION = ".log";
 
-	public static final String DEFAULT_SCRIPT_LOG_FILE = DEFAULT_SCRIPT_NAME + DEFAULT_LOG_EXTENSION;
+	public String DEFAULT_SCRIPT_LOG_FILE = DEFAULT_SCRIPT_NAME + DEFAULT_LOG_EXTENSION;
 	
-	public static final String DEFAULT_COMMAND_LOG_FILE = DEFAULT_COMMAND_NAME + DEFAULT_LOG_EXTENSION;
+	public String DEFAULT_COMMAND_LOG_FILE = DEFAULT_COMMAND_NAME + DEFAULT_LOG_EXTENSION;
 	
-	public abstract long launchJob();
+	public abstract long launchJob(); 
 	
 	public abstract boolean isFinished();
 
@@ -61,6 +62,7 @@ public abstract class Job {
 	
 	public abstract void killJob();
 	
+	public abstract  void SetLogName(String input);
 	
 	public Pair<String,String> createLaunchScript(){
 		List<String> startupScript = new ArrayList<>();

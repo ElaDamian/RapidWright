@@ -371,7 +371,7 @@ public class BlockCreator {
 		FileTools.writeLinesToTextFile(doneFileContents, fileName);
 	}
 	
-	private static void createTclScript(String scriptName, String optDcpFileName, PBlock pblock, int implIndex, BlockGuide blockGuide){
+	public static void createTclScript(String scriptName, String optDcpFileName, PBlock pblock, int implIndex, BlockGuide blockGuide){
 		PrintWriter pw = null;
 		try {
 			pw = new PrintWriter(scriptName);

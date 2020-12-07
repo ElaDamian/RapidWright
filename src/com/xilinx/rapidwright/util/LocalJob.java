@@ -111,4 +111,11 @@ public class LocalJob extends Job {
 	public void killJob() {
 		p.destroyForcibly();
 	}
+	
+	// Function added to set a specific name for the log files
+	@Override
+	public void SetLogName(String input) {
+		super.DEFAULT_SCRIPT_LOG_FILE = input+super.DEFAULT_SCRIPT_LOG_FILE;
+		super.DEFAULT_COMMAND_LOG_FILE = input+super.DEFAULT_COMMAND_LOG_FILE;
+	}
 }

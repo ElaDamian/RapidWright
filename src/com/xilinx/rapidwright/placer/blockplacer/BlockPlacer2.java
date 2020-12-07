@@ -155,12 +155,14 @@ public class BlockPlacer2 {
 		}
 		
 		// Create Hard Macro objects from module instances
+		System.out.println("Ela. design.getModuleInsts() = "+design.getModuleInsts().toString());
 		for(ModuleInst mi : design.getModuleInsts()){
 			HardMacro hm = new HardMacro(mi);
 			hardMacros.add(hm);
 			hm.setValidPlacements();
 			macroMap.put(mi, hm);
 		}
+		System.out.println("Ela. after adding design, hm is:  = "+hardMacros.toString());
 		/*
 		// Place hard macros for initial placement
 		for(HardMacro hm : hardMacros){			
@@ -219,7 +221,12 @@ public class BlockPlacer2 {
 		
 		ArrayList<HardMacro> prunedList = new ArrayList<>();
 		for(HardMacro hm : new ArrayList<>(hardMacros)){
-			if(hm.getValidPlacements().size() > 2) prunedList.add(hm);
+			if(hm.getValidPlacements().size() > 0) prunedList.add(hm); // ela changed to 0
+			if(hm.getValidPlacements().size() == 0) {
+				System.out.println("No valid placement for: "+hm.toString());
+				hm.unplace();
+			}
+				
 		}
 		hardMacros = prunedList;
 	}
@@ -605,11 +612,14 @@ public class BlockPlacer2 {
 		Arrays.sort(array);
 		
 		HashSet<Tile> usedTiles = new HashSet<Tile>();
+		System.out.println(" hardMacros " + hardMacros.toString());
         // Added variable for genreating partial dcp
         boolean save_and_exit = false;
 		// Perform final placement of all hard macros
+        int my_ela_incr = 0;
 		for(HardMacro hm : array){	
-			//System.out.println(moveCount.get(hm) + " " + hm.tileSize + " " + hm.getName());
+			my_ela_incr++;
+			System.out.println("Module nr : "+my_ela_incr+" Now running " + hm.getName());
 			HashSet<Tile> footPrint = isValidPlacement((ModuleInst)hm, hm.getModule().getAnchor().getSite(), hm.getTempAnchorSite().getTile(), usedTiles);
 			if(footPrint == null){
 				
@@ -623,6 +633,8 @@ public class BlockPlacer2 {
                     } else
                         MessageGenerator.briefErrorAndExit("ERROR: Placement failed, couldn't find valid site for " + hm.getName());	                   
 				}
+				if(hm.getName().contains("Weights"))
+					System.out.println(" After placing "+ hm.getName()+" near, usedTiles is: " + usedTiles.toString());
 			}
 			else{
 				usedTiles.addAll(footPrint);
@@ -632,9 +644,11 @@ public class BlockPlacer2 {
                         save_and_exit = true;
                         System.out.println("ERROR: Placement failed for "+hm.getName());
                         hm.unplace(); 
+                        usedTiles.removeAll(footPrint); // ella added
                     } else 
                         MessageGenerator.briefErrorAndExit("ERROR: Problem placing " + hm.getName() + " on site: " + hm.getTempAnchorSite());
 				}
+				
 			}
 		}
 		

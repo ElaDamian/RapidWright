@@ -75,10 +75,32 @@ proc compile_block_dcp  { dcpFile  ip_nr_instances} {
     if { $cells != {} } {
         # We need shape sizes before determining pBlock size, unfortunately we have to run the placer to get them
         set shapesFileName [string map {".dcp" "_shapes.txt"} $dcpFile]
+        
+        #/* Original
         set_param place.debugShape $shapesFileName
         place_design -directive Quick
         set_param place.debugShape ""
         place_design -unplace
+        #/ end of original
+        
+        #/* modified Ela
+        #set shapesFileName [string map {".dcp" "_shapes.txt"} $dcpFile]
+        #set_param place.debugShape placed_fast_shapes.txt
+        #place_design -directive Quick
+        #puts "Ela. Debug: quick placer ready"
+        #report_utilization -packthru -file placed_fast_utiliz.txt
+        #write_checkpoint -force placed_fast.dcp
+        #puts TEST4ELA
+        #set_param place.debugShape ""
+        #place_design -unplace
+        #set_param place.debugShape placed_optim_shapes.txt
+        #place_design
+        #puts "Ela. Debug: slow placer ready"
+        #report_utilization -packthru -file placed_optim_utiliz.txt
+        #write_checkpoint -force placed_optim.dcp
+        #place_design -unplace
+        #exit
+        #/ end of modified
         
     # Generate constraint
     if {[info exists ::env(GLOBAL_PBLOCK)]} {
@@ -89,12 +111,12 @@ proc compile_block_dcp  { dcpFile  ip_nr_instances} {
         set global_pblock_file ""
     }
     puts "args $urptName $shapesFileName $ip_nr_instances $global_pblock_file"
-	if { [catch {set pBlockVal [exec java --illegal-access=deny -Xmx2G com.xilinx.rapidwright.design.blocks.PBlockGenerator -u $urptName -s $shapesFileName -c 1 -i $ip_nr_instances $global_pblock_command]}] } {
+	if { [catch {set pBlockVal [exec java -Xmx2G com.xilinx.rapidwright.design.blocks.PBlockGenerator -u $urptName -s $shapesFileName -c 1 -o 0.8 -i $ip_nr_instances $global_pblock_command]}] } {
 	    set pBlockVal "PBlockGenerator Failed!"
 	}
         puts "pBlock = $pBlockVal, from: $urptName $shapesFileName"
         set fp [open [string map {".dcp" "_pblock.txt"} $dcpFile] "w"]
-        puts $fp "$pBlockVal \n#Created from: com.xilinx.rapidwright.design.blocks.PBlockGenerator -u $urptName -s $shapesFileName -c 1 -i $ip_nr_instances $global_pblock_command"
+        puts $fp "$pBlockVal \n#Created from: com.xilinx.rapidwright.design.blocks.PBlockGenerator -u $urptName -s $shapesFileName -c 1 -o 1.5 -i $ip_nr_instances $global_pblock_command"
         close $fp
 
         set designCells [get_cells -filter {NAME!=VCC && NAME!=GND}]
@@ -342,8 +364,9 @@ proc run_block_stitcher { } {
     set topLevelEdifFileName "[pwd]/${bdName}.edf"
     set cachePath [get_property IP_OUTPUT_REPO [current_project]]
     
+    # Ela uncomment 2 lines bellow
     puts "java -Xss16M com.xilinx.rapidwright.ipi.BlockStitcher ${cachePath}[cache_version_dir] $topLevelEdifFileName $ipsFileName"
-    puts [exec java -Xss16M com.xilinx.rapidwright.ipi.BlockStitcher "${cachePath}[cache_version_dir]" $topLevelEdifFileName $ipsFileName]    
+    #puts [exec java -Xss16M com.xilinx.rapidwright.ipi.BlockStitcher "${cachePath}[cache_version_dir]" $topLevelEdifFileName $ipsFileName]    
 }
 
 proc check_if_lsf_available {} {
@@ -423,9 +446,10 @@ proc prep_for_block_stitcher {} {
         if {[check_if_lsf_available]} {
             set resource [exec java com.xilinx.rapidwright.util.JobQueue -lsf_resource]
             set queue [exec java com.xilinx.rapidwright.util.JobQueue -lsf_queue]
+            puts "resource = $resource and queue = $queue"
             launch_runs -lsf "bsub -R $resource -N -q $queue" $runs_needed
         } else {
-            launch_runs $runs_needed
+            launch_runs -jobs 4 $runs_needed 
         }
         
         foreach synthRun $runs_needed {

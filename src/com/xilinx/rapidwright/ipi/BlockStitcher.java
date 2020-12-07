@@ -516,7 +516,7 @@ public class BlockStitcher {
 			}
 
 			xciFileName = dir2 + "/" + cacheID + ".xci"; 
-			//System.out.println(routedDCPFileName + " " + edifFileName + " " + xciFileName);
+			System.out.println(routedDCPFileName + " " + edifFileName + " " + xciFileName);
 
 			ModuleImpls modImpls = BlockCreator.createOrRetrieveBlock(edifFileName, routedDCPFileName, blockName, xciFileName, blockImplCount);
 			for(Module m : modImpls){
@@ -666,6 +666,7 @@ public class BlockStitcher {
 			return;
 		}else{
 			BlockPlacer2 placer = new BlockPlacer2();
+			System.out.println("Ela stictehr module name + "+stitched.getModuleNames());
 			placer.placeDesign(stitched, false);
 		}
 

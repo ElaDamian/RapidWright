@@ -46,23 +46,21 @@ public class LSFJob extends Job {
 	public long launchJob() {
 		Pair<String,String> launchScriptNames = createLaunchScript();
 		String[] cmd = new String[]{
-				"bsub","-R",
-				LSF_RESOURCE,
+				"bsub",
 				"-J",
 				getRunDir()==null? System.getProperty("user.dir") : getRunDir(),
-				"-oo",
+				"-o",
 				launchScriptNames.getSecond().replace(DEFAULT_LOG_EXTENSION, "_lsf_%J" + DEFAULT_LOG_EXTENSION),
-				"-P",
-				LSF_PROJECT +"-"+ System.getenv("USER"), 
 				"-q", 
 				LSF_QUEUE,
 				FileTools.isWindows() ? "cmd.exe" : "/bin/bash",
 				launchScriptNames.getFirst()};
 		
 		for(String line : FileTools.getCommandOutput(cmd)){
-			String jobID = line.substring(line.indexOf('<')+1, line.indexOf('>'));
-			setJobNumber(Integer.parseInt(jobID));
-	    	return getJobNumber();
+			System.out.println("Ela. from LFS Java file: "+line);
+			//String jobID = line.substring(line.indexOf('<')+1, line.indexOf('>'));
+			///setJobNumber(Integer.parseInt(jobID));
+	    	//return getJobNumber();
 		}
 		return -1;
 	}
@@ -86,7 +84,7 @@ public class LSFJob extends Job {
 	 */
 	@Override
 	public boolean jobWasSuccessful() {
-		for(String line : FileTools.getCommandOutput(new String[]{"bjobs", "-l", Long.toString(getJobNumber())})){
+		for(String line : FileTools.getCommandOutput(new String[]{"bjobs", Long.toString(getJobNumber())})){
 			if(line.contains("Exited with exit code")) return false;
 		}
 		return true;
@@ -101,5 +99,11 @@ public class LSFJob extends Job {
 			System.out.println(line);
 		}
 	}
-
+	
+	// Function added to set a specific name for the log files
+	@Override
+	public void SetLogName(String input) {
+		super.DEFAULT_SCRIPT_LOG_FILE = input+super.DEFAULT_SCRIPT_LOG_FILE;
+		super.DEFAULT_COMMAND_LOG_FILE = input+super.DEFAULT_COMMAND_LOG_FILE;
+	}
 }
